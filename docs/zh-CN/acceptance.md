@@ -145,7 +145,7 @@ claude-native --version
 
 - 个人资料路径位于 `~/.claude-env/chrome-profile` 下。
 - 启动命令行包含 `--proxy-server=http://127.0.0.1:<端口>`。
-- 包含 `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`、`--disable-quic` 和外部 DNS 解析限制参数。
+- 包含 `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` 和 `--disable-quic`；不应出现 `--host-resolver-rules`（该参数会触发 Chrome 的“不受支持的命令行标记”警告，且在使用代理时多余）。
 
 **通过标准：** 三个入口均打开同一专属资料；没有混入日常 Chrome 登录资料；Claude 页面可加载。仅参数正确不代表 WebRTC/DNS 行为已通过 P1 测试。
 

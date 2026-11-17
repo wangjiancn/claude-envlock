@@ -239,3 +239,22 @@ class DriftDetectionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SymlinkedHomeTests(unittest.TestCase):
+    def test_fresh_install_is_clean_when_home_is_a_symlink(self):
+        # Regression: /tmp -> /private/tmp made a fresh install report drift and block launches.
+        with IsolatedHome() as h:
+            link = h.home.parent / (h.home.name + '-link')
+            link.symlink_to(h.home)
+            try:
+                env = dict(h.env, HOME=str(link))
+                import sys
+                from .support import REPO
+                result = subprocess.run([sys.executable, '-I', str(REPO / 'install.py'), '--app-dir', str(h.app),
+                                         '--claude', str(h.claude)], env=env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                runtime_root = (link / '.claude-env').resolve()  # what the shim computes
+                self.assertEqual(integrity.verify(Config.load(runtime_root), home=link), [])
+            finally:
+                link.unlink()

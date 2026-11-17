@@ -14,7 +14,7 @@
 | --- | --- |
 | 终端中的 `claude` | 门禁检查 → 强制代理环境变量 → `exec` 原始 CLI |
 | VS Code 官方 Claude Code 扩展 | 通过 `claudeCode.claudeProcessWrapper` 走同一门禁 |
-| `claude-web` / **Claude Envlock.app** | 门禁检查 → 独立 Chrome 资料，强制代理并加固 DNS、WebRTC、QUIC |
+| `claude-web` / **Claude Envlock.app** | 门禁检查 → 独立 Chrome 资料，强制代理（域名交给代理解析，不在本地查 DNS），并加固 WebRTC、QUIC |
 
 此外，`~/.claude-env/claude.env` 是 Claude 环境的**唯一可信配置**：只要实际配置与它不一致，或代理出口 IP 不在白名单内，启动时就会弹出 **Block / Continue（阻止 / 继续）** 选择框。
 
@@ -43,7 +43,7 @@ claude ──► 门禁：经 127.0.0.1:<端口> CONNECT claude.ai:443 ──►
 
 - macOS（已在 Apple Silicon 测试），`/usr/bin/python3` 3.9+（随 Xcode 命令行工具提供）
 - 监听 `127.0.0.1` 的本机 HTTP 代理（默认端口 `7890`）
-- Claude Code CLI（Homebrew、npm 或原生安装）；可选 VS Code 官方扩展、Google Chrome
+- Claude Code CLI（Homebrew、npm 或原生安装），**或者**让安装器代为安装（`--install-claude`）；可选 VS Code 官方扩展、Google Chrome
 - zsh（macOS 默认 shell）
 
 ## 安装
@@ -55,6 +55,15 @@ cd claude-envlock
 ./install.sh --port 7890        # 安装
 ```
 
+**新电脑还没装 Claude Code？** 一步完成安装和环境配置：
+
+```sh
+./install.sh --install-claude --port 7890            # stable 渠道
+./install.sh --install-claude latest --port 7890     # 或 latest / 指定版本，如 2.1.311
+```
+
+先检查代理，再**经代理**下载 Anthropic 官方安装脚本（`https://claude.ai/install.sh`）并运行。重定向只允许到 `claude.ai` / `downloads.claude.ai`，官方安装脚本会校验二进制文件的 SHA-256。Claude Code 安装在 `~/.local/bin/claude`，并由 claude-envlock 包装。已安装时跳过（用 `claude update` 更新）。回滚不会卸载 Claude Code。
+
 安装后**打开新终端**，并在 VS Code 执行 **Developer: Reload Window**。已在运行的进程不会读取新配置。
 
 | 参数 | 含义 |
@@ -64,13 +73,14 @@ cd claude-envlock
 | `--no-timezone` | 取消固定 `TZ` |
 | `--exit-ips "IP 网段 …"` | 出口 IP 白名单（`""` 关闭） |
 | `--on-mismatch prompt\|block` | 发现配置变化或出口 IP 不符时：弹窗询问 / 直接阻止 |
+| `--install-claude [渠道]` | 未安装 Claude Code 时，经代理用官方安装脚本安装；`stable`（默认）、`latest` 或指定版本 |
 | `--claude 路径` | 要包装的原始 CLI（可重复）；默认自动检测 `/opt/homebrew/bin`、`/usr/local/bin`、`~/.local/bin` |
 | `--chrome 路径` | Chrome 可执行文件 |
 | `--app-dir 路径` | `Claude Envlock.app` 位置，默认 `/Applications` |
 | `--merge-unmanaged-settings` | 保留 Claude 自己写入 `~/.claude/settings.json` 的设置（如 `tui`） |
 | `--dry-run` | 仅预检 |
 
-重复安装是安全的：幂等、保留 VS Code JSONC 注释、不重复添加 shell 配置。若受管文件部署后被手动修改，安装器会**停止并指出该文件**，不会强行覆盖。
+重复安装是安全的：幂等、保留 VS Code JSONC 注释、不重复添加 shell 配置；`.zshrc` / `.zprofile` 中受管块**以外**的修改会被保留。若受管文件部署后被手动修改，安装器会**停止并指出该文件**，不会强行覆盖。
 
 ## 使用
 

@@ -105,9 +105,10 @@ def chrome_command(cfg, url):
     return [
         cfg.chrome,
         '--user-data-dir=' + str(cfg.chrome_profile),
+        # With a fixed HTTP proxy, Chrome sends hostnames to the proxy (CONNECT host:443) and does not
+        # query DNS itself. (Verified with Chrome's net log; see docs/security-model.md.) So no
+        # --host-resolver-rules: it's redundant, and Chrome shows an "unsupported flag" warning bar for it.
         '--proxy-server=' + cfg.proxy_url,
-        # Resolve every external host through the proxy, never locally.
-        '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost, EXCLUDE [::1]',
         '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
         '--disable-quic',
         '--no-first-run',

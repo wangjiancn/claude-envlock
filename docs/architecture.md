@@ -24,6 +24,7 @@ src/claude_envlock/
   cli.py                     main(root, argv): dispatches on argv[0]
   rollback.py                conflict check + restore
   installer.py               Plan (transaction) + staging steps      [repo only]
+  bootstrap.py               --install-claude: official installer via the proxy      [repo only]
   jsonc.py                   comment-preserving JSONC read/edit (also used by integrity)
 tests/                       unittest; isolated HOME, fake proxy, real shim execution
 tools/                       real-CLI smoke test
@@ -77,7 +78,7 @@ cli.main(root, argv)
  │    preflight() → execve
  └─ claude-web
       validate_url() → https only (http only for loopback), no userinfo, no flags
-      preflight() → Popen(Chrome --user-data-dir --proxy-server --host-resolver-rules
+      preflight() → Popen(Chrome --user-data-dir --proxy-server
                      --force-webrtc-ip-handling-policy --disable-quic, env=browser_environment())
 ```
 

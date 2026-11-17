@@ -57,6 +57,7 @@ These need a human, a real network, and a real proxy client.
 | --- | --- | --- |
 | M1 | `claude-web`, Claude Envlock.app, Dock icon | All open the same dedicated profile; `chrome://version` shows the proxy and hardening flags |
 | M2 | Proxy connection log | CLI, VS Code, and Chrome requests to `claude.ai` / `anthropic.com` show up under your expected rule and node |
+| M3b | DNS (after Chrome updates) | Launch Chrome as `claude-web` does, plus `--log-net-log=/tmp/n.json`, and open a made-up `https://random-123.example.com/`. The proxy gets `CONNECT random-123.example.com:443`, and the net log has no `HOST_RESOLVER_SYSTEM_TASK` / `DNS_TRANSACTION` events |
 | M3 | WebRTC | A STUN probe in the dedicated Chrome shows no non-proxied UDP candidates |
 | M4 | Quit the proxy, then launch | `claude`, `claude-web`, and the IDE all refuse to start; the error names no secrets |
 | M5 | Quit the proxy mid-session | Requests fail; nothing goes out directly |

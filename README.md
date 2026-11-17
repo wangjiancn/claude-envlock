@@ -16,7 +16,7 @@ Claude entry point so it **checks the proxy before starting, and refuses to star
 | --- | --- |
 | `claude` in Terminal | Gate check → force proxy env → `exec` the real CLI |
 | VS Code (official Claude Code extension) | Same gate via `claudeCode.claudeProcessWrapper` |
-| `claude-web` / **Claude Envlock.app** | Gate check → dedicated Chrome profile with proxy, DNS, WebRTC and QUIC hardening |
+| `claude-web` / **Claude Envlock.app** | Gate check → dedicated Chrome profile with a forced proxy (hostnames go to the proxy, no local DNS), WebRTC and QUIC hardening |
 
 On top of that, one file, `~/.claude-env/claude.env`, is the **single source of truth**
 for Claude's environment. If anything drifts from it, or your proxy's exit IP isn't on your
@@ -51,7 +51,8 @@ More details: [docs/architecture.md](docs/architecture.md) · [docs/security-mod
 
 - macOS (tested on Apple Silicon) with `/usr/bin/python3` (3.9+, ships with the Xcode Command Line Tools)
 - A local HTTP proxy listening on `127.0.0.1` (default port `7890`)
-- Claude Code CLI (Homebrew, npm, or native installer). Optional: VS Code + the official extension, Google Chrome
+- Claude Code CLI (Homebrew, npm, or native installer), **or** let the installer install it for you (`--install-claude`).
+  Optional: VS Code + the official extension, Google Chrome
 - zsh (the macOS default shell)
 
 ## Install
@@ -62,6 +63,19 @@ cd claude-envlock
 ./install.sh --dry-run          # show what would change; writes nothing
 ./install.sh --port 7890        # install
 ```
+
+**New Mac without Claude Code?** Install Claude Code and set up the environment in one step:
+
+```sh
+./install.sh --install-claude --port 7890            # stable channel
+./install.sh --install-claude latest --port 7890     # or: latest / a version like 2.1.311
+```
+
+This checks the proxy first, then downloads Anthropic's official installer
+(`https://claude.ai/install.sh`) **through the proxy** and runs it. Redirects may only go to `claude.ai` /
+`downloads.claude.ai`, and the official installer verifies the binary's SHA-256. Claude Code lands in
+`~/.local/bin/claude`, and claude-envlock wraps it. If Claude Code is already installed, this step is
+skipped (update it with `claude update`). Rollback doesn't uninstall Claude Code.
 
 Then **open a new terminal**, and in VS Code run **Developer: Reload Window**. Processes that are already
 running don't pick up the new settings.
@@ -75,6 +89,7 @@ running don't pick up the new settings.
 | `--no-timezone` | Stop pinning `TZ` |
 | `--exit-ips "IP CIDR …"` | Exit-IP allowlist (`""` turns it off) |
 | `--on-mismatch prompt\|block` | What happens on drift or a disallowed exit IP |
+| `--install-claude [CHANNEL]` | If Claude Code is missing, install it with the official installer, through the proxy. `stable` (default), `latest`, or a version |
 | `--claude PATH` | The original Claude CLI to wrap (repeatable). Default: auto-detects `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` |
 | `--chrome PATH` | Chrome executable. Default: `/Applications/Google Chrome.app/...` |
 | `--app-dir PATH` | Where to create `Claude Envlock.app`. Default: `/Applications` |
@@ -84,8 +99,8 @@ running don't pick up the new settings.
 Each flag edits `~/.claude-env/claude.env`. A flag you leave out keeps the value the file already has.
 
 Re-running the installer is safe. It is idempotent, keeps comments in VS Code's JSONC, and never adds a
-second shell block. If a managed file was edited after deployment, it **stops and names the file**
-instead of overwriting it.
+second shell block. Your own edits **outside** the marked block in `.zshrc` / `.zprofile` are kept.
+If a managed file was edited after deployment, it **stops and names the file** instead of overwriting it.
 
 ## Usage
 

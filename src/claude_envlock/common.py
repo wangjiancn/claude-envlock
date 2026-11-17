@@ -19,6 +19,8 @@ GATE_PORT = 443
 DEFAULT_PORT = 7890
 DEFAULT_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 ACTIVE_FLAG = 'CLAUDE_ENVLOCK_ACTIVE'
+# claude.ai rejects the default Python-urllib agent (403); identify the tool honestly instead.
+USER_AGENT = 'claude-envlock (+https://github.com/wangjiancn/claude-envlock)'
 
 # Commands placed in <root>/bin. Each one is the same shim; cli.main dispatches on its name.
 LAUNCHERS = ('claude', 'claude-npm', 'claude-native', 'claude-check', 'claude-gate',

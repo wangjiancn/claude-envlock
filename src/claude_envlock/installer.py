@@ -14,6 +14,7 @@ import sys
 
 from . import __version__
 from . import envfile
+from .bootstrap import install_claude
 from .common import (APP_NAME, DEFAULT_CHROME, DEFAULT_PORT, LAUNCHERS, SHELL_BEGIN, SHELL_END, SHELL_FILES,
                      atomic_write, default_root, manifest_path, render_shell_block, sha256)
 from .config import Config
@@ -59,20 +60,32 @@ def default_cli_paths(home):
     return homebrew, native
 
 
-def discover_cli(explicit, home, root):
-    """Return (candidates, variants). Fails if no original Claude CLI is installed."""
+def cli_candidates(explicit, home):
+    """Return (candidates, variants) for config.json."""
     if explicit:
-        candidates, variants = [str(Path(p).expanduser().absolute()) for p in explicit], {}
-    else:
-        homebrew, native = default_cli_paths(home)
-        npm = next((p for p in homebrew if Path(p).is_file()), homebrew[0])
-        candidates, variants = homebrew + [native], {'npm': npm, 'native': native}
+        return [str(Path(p).expanduser().absolute()) for p in explicit], {}
+    homebrew, native = default_cli_paths(home)
+    npm = next((p for p in homebrew if Path(p).is_file()), homebrew[0])
+    return homebrew + [native], {'npm': npm, 'native': native}
+
+
+def usable_cli(candidates, root):
     root = Path(root).resolve()
-    usable = [p for p in candidates if Path(p).is_file() and os.access(p, os.X_OK)
-              and root not in Path(p).resolve().parents]
-    if not usable:
-        raise RuntimeError('No Claude CLI found. Install Claude Code first, or pass --claude /path/to/claude.')
-    return candidates, variants
+    return [p for p in candidates if Path(p).is_file() and os.access(p, os.X_OK)
+            and root not in Path(p).resolve().parents]
+
+
+def strip_shell_block(text):
+    """Remove the managed block (current or legacy markers) the way shell_block() inserted it."""
+    for begin, end in ((SHELL_BEGIN, SHELL_END),) + LEGACY_SHELL_MARKERS:
+        if begin in text and end in text:
+            start, stop = text.index(begin), text.index(end) + len(end)
+            if text[:start].endswith('\n\n'):
+                start -= 1
+            if text[stop:stop + 1] == '\n':
+                stop += 1
+            return text[:start] + text[stop:]
+    return None
 
 
 def rebase_settings_backup(record, current, previous_env):
@@ -119,7 +132,7 @@ class Plan:
     def owns(self, prefix):
         return any(name.startswith(str(prefix) + '/') for name in self.manifest['files'])
 
-    def stage(self, path, content, mode=0o600, merge_env=None, user_editable=False):
+    def stage(self, path, content, mode=0o600, adopt=None, user_editable=False):
         if isinstance(content, str):
             content = content.encode()
         path = Path(path)
@@ -131,10 +144,8 @@ class Plan:
         record = self.manifest['files'].get(str(path))
         adopted = False
         if record and not user_editable and (old is None or sha256(old) != record['installed_sha256']):
-            if old is not None and merge_env is not None and self.merge_unmanaged:
-                rebase_settings_backup(record, json.loads(old), merge_env)
+            if old is not None and adopt is not None and adopt(record, old):
                 adopted = True
-                print('Keeping unmanaged Claude settings and updating the rollback backup.')
             else:
                 raise RuntimeError('File changed after deployment; resolve the conflict first: {}'.format(path))
         recorded_ok = record is None or record['installed_sha256'] == sha256(content)
@@ -217,7 +228,14 @@ def stage_claude_settings(plan, home, env, previous_env, stale_keys):
         if data['env'].get(key) == previous_env.get(key):
             data['env'].pop(key, None)
     data['env'].update(env)
-    plan.stage(path, json.dumps(data, ensure_ascii=False, indent=2) + '\n', merge_env=previous_env)
+    def adopt(record, old):
+        if not plan.merge_unmanaged:
+            return False
+        rebase_settings_backup(record, json.loads(old), previous_env)
+        print('Keeping unmanaged Claude settings and updating the rollback backup.')
+        return True
+
+    plan.stage(path, json.dumps(data, ensure_ascii=False, indent=2) + '\n', adopt=adopt)
 
 
 def stage_vscode_settings(plan, home, root, env, stale_keys):
@@ -239,12 +257,29 @@ def stage_vscode_settings(plan, home, root, env, stale_keys):
     plan.stage(path, new_text)
 
 
+def adopt_shell_edits(path):
+    """Edits outside our marked block belong to the user (or tools like Claude's own installer).
+
+    Keep them, and make them part of the rollback backup. Only a missing or broken block is a conflict.
+    """
+    def adopt(record, old):
+        user_text = strip_shell_block(old.decode())
+        if user_text is None:
+            return False
+        record['original'] = base64.b64encode(user_text.encode()).decode()
+        record['existed'] = bool(record['existed'] or user_text)
+        record['mode'] = record['mode'] or (path.stat().st_mode & 0o777)
+        print('Keeping your edits outside the managed block in {}.'.format(path.name))
+        return True
+    return adopt
+
+
 def stage_shell(plan, home):
     for name in SHELL_FILES:
         path = home / name
         text = path.read_text() if path.exists() else ''
         mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
-        plan.stage(path, shell_block(text, render_shell_block(name)), mode)
+        plan.stage(path, shell_block(text, render_shell_block(name)), mode, adopt=adopt_shell_edits(path))
 
 
 def stage_app(plan, app):
@@ -273,6 +308,9 @@ def parse_args(argv=None):
                     help='replace the exit-IP allowlist (space-separated; "" turns the check off)')
     ap.add_argument('--on-mismatch', choices=('prompt', 'block'),
                     help='on drift or a disallowed exit IP: Block/Continue popup, or always block')
+    ap.add_argument('--install-claude', nargs='?', const='stable', metavar='CHANNEL',
+                    help='if Claude Code is missing, install it with the official installer through the proxy '
+                         '(CHANNEL: stable [default], latest, or a version)')
     ap.add_argument('--claude', action='append', metavar='PATH',
                     help='original Claude CLI to wrap (repeatable; default: auto-detect)')
     ap.add_argument('--chrome', default=DEFAULT_CHROME, help='Google Chrome executable')
@@ -314,13 +352,38 @@ def resolve_settings(args, env_path, previous):
     return settings, values
 
 
+def ensure_claude(args, candidates, port, home, root):
+    """Make sure an original Claude CLI exists, installing it if --install-claude was given."""
+    found = usable_cli(candidates, root)
+    if args.install_claude and args.claude:
+        raise ValueError('--install-claude installs to ~/.local/bin; don\'t combine it with --claude.')
+    if found:
+        if args.install_claude:
+            print('Claude Code already installed: {} (skipping; update with "claude update").'.format(found[0]))
+        return
+    if not args.install_claude:
+        raise RuntimeError('No Claude CLI found. Re-run with --install-claude to install it through the proxy, '
+                           'or pass --claude /path/to/claude.')
+    if args.dry_run:
+        print('Would install Claude Code ({}) with the official installer, through the proxy.'
+              .format(args.install_claude))
+        return
+    print('Installing Claude Code ({}) with the official installer, through {}:{} ...'
+          .format(args.install_claude, '127.0.0.1', port))
+    print('Installed: {}'.format(install_claude(port, home, args.install_claude, root)))
+
+
 def run(args, home=None, root=None):
     home = Path(home or Path.home())
-    root = Path(root or default_root())
+    # Resolve symlinks (e.g. /tmp -> /private/tmp): launchers compute their root the same way, and
+    # written paths (BROWSER, claudeProcessWrapper) must match it exactly.
+    root = Path(root or default_root()).resolve()
     previous = load_previous_config(root)
     env_path = root / envfile.FILENAME
     settings, values = resolve_settings(args, env_path, previous)
-    candidates, variants = discover_cli(args.claude, home, root)
+    Config(root=root, **settings)  # validate settings before any download or write
+    candidates, variants = cli_candidates(args.claude, home)
+    ensure_claude(args, candidates, settings['port'], home, root)
     cfg = Config(root=root, cli_candidates=tuple(candidates), cli_variants=variants, chrome=args.chrome, **settings)
 
     env = cfg.managed_env()

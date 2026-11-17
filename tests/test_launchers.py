@@ -112,7 +112,9 @@ class WebTests(unittest.TestCase):
         self.assertIn('--proxy-server=http://127.0.0.1:7890', cmd)
         self.assertIn('--force-webrtc-ip-handling-policy=disable_non_proxied_udp', cmd)
         self.assertIn('--disable-quic', cmd)
-        self.assertTrue(any(x.startswith('--host-resolver-rules=MAP * ~NOTFOUND') for x in cmd))
+        # Chrome shows an "unsupported command-line flag" warning bar for these; never use them.
+        unsupported = ('--host-resolver-rules', '--no-sandbox', '--disable-web-security', '--ignore-certificate-errors')
+        self.assertFalse([x for x in cmd if x.startswith(unsupported)])
 
 
 if __name__ == '__main__':

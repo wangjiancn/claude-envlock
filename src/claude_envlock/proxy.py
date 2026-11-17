@@ -14,7 +14,7 @@ import ssl
 import urllib.parse
 import urllib.request
 
-from .common import GATE_HOST, GATE_PORT, NO_PROXY_VALUE, NO_PROXY_VARS, PRIVACY_VARS, PROXY_VARS
+from .common import USER_AGENT, GATE_HOST, GATE_PORT, NO_PROXY_VALUE, NO_PROXY_VARS, PRIVACY_VARS, PROXY_VARS
 
 MAX_HEADER_BYTES = 16384
 
@@ -61,7 +61,7 @@ def gate(cfg):
 TRACE_URL = 'https://{}/cdn-cgi/trace'.format(GATE_HOST)
 
 
-class _NoBypassProxy(urllib.request.ProxyHandler):
+class NoBypassProxy(urllib.request.ProxyHandler):
     # Ignore inherited proxy/bypass variables; always use the configured proxy.
     def proxy_open(self, req, proxy, kind):
         req.set_proxy(urllib.parse.urlsplit(proxy).netloc, kind)
@@ -70,7 +70,8 @@ class _NoBypassProxy(urllib.request.ProxyHandler):
 
 def fetch_via_proxy(cfg, url, limit=65536):
     """GET `url` through the configured proxy. No cookie jar, so no cookies are ever sent."""
-    opener = urllib.request.build_opener(_NoBypassProxy({'https': cfg.proxy_url}))
+    opener = urllib.request.build_opener(NoBypassProxy({'https': cfg.proxy_url}))
+    opener.addheaders = [('User-Agent', USER_AGENT)]
     with opener.open(url, timeout=cfg.timeout) as response:
         return response.read(limit).decode('utf-8')
 

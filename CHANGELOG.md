@@ -3,6 +3,26 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `--install-claude [stable|latest|VERSION]`: on a machine without Claude Code, install it with
+  Anthropic's official native installer, downloaded and run **through the verified proxy**.
+  Redirects are pinned to `claude.ai` / `downloads.claude.ai`. Skipped if Claude Code is already installed.
+
+### Changed
+- Edits outside the managed block in `.zshrc` / `.zprofile` no longer cause a conflict. They are kept
+  and folded into the rollback backup.
+- Requests to claude.ai now send a `claude-envlock` User-Agent (claude.ai returns 403 to the default
+  `Python-urllib` agent).
+
+### Fixed
+- The dedicated Chrome no longer shows the "You are using an unsupported command-line flag:
+  --host-resolver-rules…" warning bar. The flag was removed: with `--proxy-server`, Chrome already sends
+  hostnames to the proxy and sends no DNS queries itself (verified with Chrome 157's net log).
+- A fresh install under a symlinked home (for example `/tmp` → `/private/tmp`) reported drift and
+  blocked launches. The installer now resolves the install root the same way the launchers do.
+
 ## [2.0.0] - 2026-11-17
 
 First public release, renamed from the private `claude-safe` to **claude-envlock**.

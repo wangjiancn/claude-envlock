@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+# Never commit local deployment data, backups, or smoke-test logs.
+.claude-env/
+*.jsonl
+*.stderr

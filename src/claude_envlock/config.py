@@ -4,11 +4,11 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 from zoneinfo import ZoneInfo
 
-from .common import (ACTIVE_FLAG, DEFAULT_CHROME, LOOPBACK, NO_PROXY_VALUE, NO_PROXY_VARS, PRIVACY_VARS,
-                     PROXY_VARS, SOCKS_VARS)
+from .common import (ACTIVE_FLAG, CHINA_TIMEZONES, DEFAULT_CHROME, DEFAULT_TIMEZONE, LOOPBACK, NO_PROXY_VALUE,
+                     NO_PROXY_VARS, PRIVACY_VARS, PROXY_VARS, SOCKS_VARS, ZONE_TAB)
 
 CONFIG_VERSION = 3
 MISMATCH_POLICIES = ('prompt', 'block')
@@ -21,11 +21,25 @@ UNSAFE_VALUE = re.compile(r'["\\$`\r\n]')
 
 
 def validate_timezone(name):
+    if not name:
+        raise ValueError('A timezone is required (default: {}).'.format(DEFAULT_TIMEZONE))
+    if name in CHINA_TIMEZONES:
+        raise ValueError('China timezones are not allowed: {}. Use --timezone with another zone.'.format(name))
     try:
         ZoneInfo(name)
     except (KeyError, ValueError) as exc:  # ZoneInfoNotFoundError is a KeyError
         raise ValueError('Unknown IANA timezone: {!r}'.format(name)) from exc
     return name
+
+
+def country_timezones(country, zone_tab=ZONE_TAB):
+    """Canonical zones for a two-letter country code, from the system's zone.tab. Empty if unknown."""
+    zones = []
+    for line in Path(zone_tab).read_text().splitlines():
+        fields = line.split('\t')
+        if len(fields) >= 3 and fields[0] == country.upper():
+            zones.append(fields[2])
+    return zones
 
 
 def validate_networks(items):
@@ -55,7 +69,7 @@ class Config:
     port: int
     host: str = LOOPBACK
     timeout: float = 5.0
-    cli_timezone: Optional[str] = None
+    cli_timezone: str = DEFAULT_TIMEZONE
     allowed_exit_ips: Tuple[str, ...] = ()
     on_mismatch: str = 'prompt'
     extra_env: Dict[str, str] = field(default_factory=dict)
@@ -68,8 +82,7 @@ class Config:
             raise ValueError('The proxy must listen on {} (local only).'.format(LOOPBACK))
         if isinstance(self.port, bool) or not isinstance(self.port, int) or not 1 <= self.port <= 65535:
             raise ValueError('Proxy port must be an integer between 1 and 65535.')
-        if self.cli_timezone is not None:
-            validate_timezone(self.cli_timezone)
+        validate_timezone(self.cli_timezone)
         if self.on_mismatch not in MISMATCH_POLICIES:
             raise ValueError('CLAUDE_ENVLOCK_ON_MISMATCH must be "prompt" or "block".')
         validate_networks(self.allowed_exit_ips)
@@ -95,8 +108,7 @@ class Config:
         env.update(PRIVACY_VARS)
         env['BROWSER'] = str(self.bin_dir / 'claude-web')
         env.update(self.extra_env)
-        if self.cli_timezone:
-            env['TZ'] = self.cli_timezone
+        env['TZ'] = self.cli_timezone
         return env
 
     def exit_ip_allowed(self, ip):
@@ -112,7 +124,7 @@ class Config:
             port=data['port'],
             host=data.get('host', LOOPBACK),
             timeout=data.get('timeout', 5.0),
-            cli_timezone=data.get('cli_timezone') or None,
+            cli_timezone=data.get('cli_timezone') or DEFAULT_TIMEZONE,
             allowed_exit_ips=tuple(data.get('allowed_exit_ips', ())),
             on_mismatch=data.get('on_mismatch', 'prompt'),
             extra_env=dict(data.get('extra_env', {})),

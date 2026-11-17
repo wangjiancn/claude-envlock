@@ -1,6 +1,6 @@
 import unittest
 
-from claude_envlock.jsonc import loads, update
+from claude_envlock.jsonc import loads, remove, update
 
 
 class JsoncTests(unittest.TestCase):
@@ -22,6 +22,19 @@ class JsoncTests(unittest.TestCase):
     def test_rejects_duplicate_keys(self):
         with self.assertRaises(ValueError):
             update('{"a": 1, "a": 2}', {'a': 3})
+
+    def test_remove_keeps_comments_and_valid_commas(self):
+        import itertools
+        import json
+        text = '{\n  // keep me\n  "a": [1, 2],\n  "b": "x,}",\n  "c": {"n": 1}\n}\n'
+        for n in range(4):
+            for keys in itertools.combinations('abc', n):
+                result = remove(text, keys)
+                expected = {k: v for k, v in loads(text).items() if k not in keys}
+                self.assertEqual(loads(result), expected)
+                self.assertIn('// keep me', result)
+        self.assertEqual(json.loads(remove('{"a": 1, "b": 2}', ['b'])), {'a': 1})
+        json.loads(remove('{\n  "a": 1,\n  "b": 2\n}', ['b']))  # strict JSON stays strict
 
     def test_rejects_non_object(self):
         with self.assertRaises(ValueError):

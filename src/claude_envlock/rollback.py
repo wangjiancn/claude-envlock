@@ -1,4 +1,7 @@
-"""Restore original files, but only if no managed file changed after deployment.
+"""Restore original files.
+
+Files claude-envlock owns are restored only if none changed after deployment. Shared settings files
+(Claude and VS Code settings.json) never block: only claude-envlock's own keys are put back.
 
 Chrome profile, backups and logs are kept.
 """
@@ -8,6 +11,7 @@ import os
 from pathlib import Path
 import sys
 
+from . import shared
 from .common import manifest_path, sha256
 
 USAGE = 'Usage: claude-rollback [--check]'
@@ -17,12 +21,19 @@ def conflicts(manifest):
     found = []
     for name, record in manifest['files'].items():
         path = Path(name)
+        if record.get('kind') == shared.KIND:
+            if path.is_symlink():
+                found.append(name)
+            continue
         if path.is_symlink() or not path.is_file() or sha256(path.read_bytes()) != record['installed_sha256']:
             found.append(name)
     return found
 
 
 def restore(path, record):
+    if record.get('kind') == shared.KIND:
+        shared.restore(path, record)
+        return
     if record['existed']:
         tmp = path.with_name(path.name + '.claude-envlock-restore')
         fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, record['mode'])

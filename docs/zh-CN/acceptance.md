@@ -1,6 +1,6 @@
 # Claude 本机入口保护：完整验收方案
 
-适用版本：claude-envlock 2.x。下文 `<repo>` 指本仓库目录，`<端口>` 指本机代理端口，`<时区>` 指通过 `--timezone` 设置的时区（未设置则跳过所有时区项）。
+适用版本：claude-envlock 2.x。下文 `<repo>` 指本仓库目录，`<端口>` 指本机代理端口，`<时区>` 指通过 `--timezone` 设置的时区（未设置则为默认值 `Asia/Jakarta`）。
 
 目标配置：本机 HTTP 代理 `127.0.0.1:<端口>`；Claude CLI 和 VS Code 官方扩展使用 `<时区>`；macOS 和专属 Chrome 继续使用真实系统时区。节点、订阅和代理内部的分流由用户维护。
 
@@ -55,7 +55,7 @@ cd <repo>
 
 **通过标准：** 退出码 0，报告端口 `<端口>`、CLI 时区 `<时区>`、待更新文件 0。检查全局 Claude 的 `env.TZ`、VS Code 的 `claudeCode.environmentVariables` 中的 TZ，以及本地运行配置 `cli_timezone` 三处一致。
 
-若报告文件冲突，先记录差异，不能直接覆盖或编辑 manifest 来让检查变绿。只有确认是 `tui` 等非受管设置变化时，才使用安装器的 `--merge-unmanaged-settings` 合并并复测。
+若报告文件冲突，先记录差异，不能直接覆盖或编辑 manifest 来让检查变绿。`settings.json` 里 `tui` 等非受管设置的变化不会再导致冲突；若安装输出 `Replacing a hand edit`，确认被替换的值和 `backups/` 里的副本。
 
 ### A02：代理连通与源站 TLS
 

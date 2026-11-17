@@ -10,7 +10,7 @@ whole file (including the derived proxy lines) together with every other managed
 """
 import re
 
-from .common import DEFAULT_PORT, SOCKS_VARS
+from .common import DEFAULT_PORT, DEFAULT_TIMEZONE, SOCKS_VARS
 from .config import RESERVED_ENV
 
 FILENAME = 'claude.env'
@@ -63,7 +63,7 @@ def settings_from_values(values):
         raise ValueError('CLAUDE_ENVLOCK_PORT must be a number.')
     return {
         'port': int(port),
-        'cli_timezone': values.get('CLAUDE_ENVLOCK_TIMEZONE') or None,
+        'cli_timezone': values.get('CLAUDE_ENVLOCK_TIMEZONE') or DEFAULT_TIMEZONE,
         'allowed_exit_ips': tuple(x for x in re.split(r'[\s,]+', values.get('CLAUDE_ENVLOCK_ALLOWED_EXIT_IPS', ''))
                                   if x),
         'on_mismatch': values.get('CLAUDE_ENVLOCK_ON_MISMATCH') or 'prompt',
@@ -93,8 +93,9 @@ def render(cfg):
         '# ---- Settings ----',
         '# Local HTTP proxy port (127.0.0.1).',
         line('CLAUDE_ENVLOCK_PORT', cfg.port),
-        '# IANA timezone for Claude processes only. Empty = use the system timezone.',
-        line('CLAUDE_ENVLOCK_TIMEZONE', cfg.cli_timezone or ''),
+        '# IANA timezone for Claude processes only (default {}; China timezones are not allowed).'.format(
+            DEFAULT_TIMEZONE),
+        line('CLAUDE_ENVLOCK_TIMEZONE', cfg.cli_timezone),
         '# Allowed exit IPs / CIDR ranges, space-separated, checked via claude.ai at launch. Empty = no check.',
         line('CLAUDE_ENVLOCK_ALLOWED_EXIT_IPS', ' '.join(cfg.allowed_exit_ips)),
         '# On a change or a disallowed exit IP: "prompt" (Block/Continue popup) or "block".',

@@ -44,7 +44,7 @@ trust the model's summary. The checks:
 | `browser_wrapper_inherited` | `BROWSER` = `claude-web` |
 | `claude_on_path_is_managed` | `which claude` = managed shim |
 | `proxy_connect_and_tls_pass` | `claude-check` exit 0 |
-| `tz_env_matches`, `node_intl_timezone_matches` | Only if `--timezone` is set |
+| `tz_env_matches`, `node_intl_timezone_matches` | Always (default `Asia/Jakarta`) |
 
 To test the VS Code extension, ask Claude **in the extension panel** to run
 `/usr/bin/python3 <repo>/tools/smoke_probe.py` and paste the JSON.

@@ -11,6 +11,17 @@ All notable changes to this project are documented here. The format follows
   Redirects are pinned to `claude.ai` / `downloads.claude.ai`. Skipped if Claude Code is already installed.
 
 ### Changed
+- **Timezone is now always set**, defaulting to `Asia/Jakarta`. `--no-timezone` is removed; an empty
+  `CLAUDE_ENVLOCK_TIMEZONE` means the default.
+- **China timezones are rejected** (`Asia/Shanghai`, `Asia/Urumqi`, `Asia/Hong_Kong`, `Asia/Macau`, and aliases).
+- **The installer checks the timezone against the exit IP country** seen by `claude.ai/cdn-cgi/trace`, and
+  stops before writing anything on a mismatch. `--skip-timezone-check` installs anyway. `claude-check` shows
+  the same comparison as a `WARN` line.
+- **Shared settings files are now owned key by key.** In `~/.claude/settings.json` and VS Code's
+  `settings.json`, install and rollback touch only claude-envlock's keys and never refuse because of other
+  edits. A hand edit to a managed key is replaced on install, printed, and the file is copied to
+  `backups/`. Rollback keeps everything changed after the install. Older whole-file records are migrated
+  automatically. `--merge-unmanaged-settings` is no longer needed (still accepted, does nothing).
 - Edits outside the managed block in `.zshrc` / `.zprofile` no longer cause a conflict. They are kept
   and folded into the rollback backup.
 - Requests to claude.ai now send a `claude-envlock` User-Agent (claude.ai returns 403 to the default

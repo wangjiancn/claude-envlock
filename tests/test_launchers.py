@@ -37,9 +37,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(base['TZ'], 'Asia/Shanghai')
         self.assertEqual(env['KEEP'], 'yes')
 
-    def test_no_timezone_configured_keeps_inherited_value(self):
-        env = launchers.cli_environment(make_config(), {'TZ': 'Europe/Paris'})
-        self.assertEqual(env['TZ'], 'Europe/Paris')
+    def test_default_timezone_overrides_inherited_value(self):
+        env = launchers.cli_environment(make_config(), {'TZ': 'Asia/Shanghai'})
+        self.assertEqual(env['TZ'], 'Asia/Jakarta')
 
     def test_resolve_cli_rejects_recursion(self):
         with tempfile.TemporaryDirectory() as folder:

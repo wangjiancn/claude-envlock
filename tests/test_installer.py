@@ -4,7 +4,7 @@ import unittest
 from claude_envlock.installer import shell_block
 from claude_envlock.jsonc import loads
 
-from .support import IsolatedHome
+from .support import IsolatedHome, closed_port
 
 
 class InstallerTests(unittest.TestCase):
@@ -31,12 +31,13 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(zshrc.read_text().count('Claude Envlock managed entry >>>'), 1)
 
             self.assertEqual(h.rollback('--check').returncode, 0)
-            managed = h.vscode_settings.read_text()
-            h.vscode_settings.write_text(managed + '// later edit\n')
+            config = h.root / 'config.json'  # a file claude-envlock owns: edits there still block rollback
+            owned = config.read_text()
+            config.write_text(owned + ' ')
             self.assertNotEqual(h.rollback().returncode, 0)
-            self.assertTrue((h.root / 'config.json').exists(), 'no partial rollback')
+            self.assertTrue(h.app.exists(), 'no partial rollback')
 
-            h.vscode_settings.write_text(managed)
+            config.write_text(owned)
             result = h.rollback()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(h.vscode_settings.read_text(), initial)
@@ -45,7 +46,7 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((h.root / 'lib').exists())
             self.assertFalse(h.app.exists())
 
-    def test_timezone_migration_keeps_unmanaged_edits_and_rollback(self):
+    def test_shared_settings_never_block_install(self):
         with IsolatedHome() as h:
             h.claude_settings.parent.mkdir()
             h.claude_settings.write_text(json.dumps({'env': {'TZ': 'Asia/Tokyo'}, 'model': 'original'}))
@@ -53,42 +54,107 @@ class InstallerTests(unittest.TestCase):
 
             data = json.loads(h.claude_settings.read_text())
             data['tui'] = {'theme': 'dark'}  # Claude writes its own settings over time.
+            data['env']['MY_VAR'] = 'mine'
             h.claude_settings.write_text(json.dumps(data))
-            before = h.claude_settings.read_bytes()
-            self.assertNotEqual(h.install('--timezone', 'Asia/Singapore').returncode, 0)
-            self.assertEqual(h.claude_settings.read_bytes(), before)
-
-            data['env']['TZ'] = 'Australia/Perth'  # A hand edit to a managed key must still block.
-            h.claude_settings.write_text(json.dumps(data))
-            self.assertNotEqual(h.install('--merge-unmanaged-settings').returncode, 0)
-
-            data['env']['TZ'] = 'Asia/Jakarta'
-            h.claude_settings.write_text(json.dumps(data))
-            result = h.install('--timezone', 'Asia/Singapore', '--merge-unmanaged-settings')
+            result = h.install('--timezone', 'Asia/Singapore')
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('Replacing', result.stdout)
+            data = json.loads(h.claude_settings.read_text())
+            self.assertEqual((data['tui'], data['env']['MY_VAR'], data['env']['TZ']),
+                             ({'theme': 'dark'}, 'mine', 'Asia/Singapore'))
+
+            data['env']['TZ'] = 'Australia/Perth'  # a hand edit to a managed key: replaced and reported
+            h.claude_settings.write_text(json.dumps(data))
+            result = h.install()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('env.TZ: Australia/Perth -> Asia/Singapore', result.stdout)
             self.assertEqual(json.loads(h.claude_settings.read_text())['env']['TZ'], 'Asia/Singapore')
+            backups = list((h.root / 'backups').glob('claude-settings.json.*.bak'))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(json.loads(backups[0].read_text())['env']['TZ'], 'Australia/Perth')
             variables = loads(h.vscode_settings.read_text())['claudeCode.environmentVariables']
             self.assertIn({'name': 'TZ', 'value': 'Asia/Singapore'}, variables)
+
+            self.assertEqual(h.install('--merge-unmanaged-settings').returncode, 0)  # old flag still accepted
+
+    def test_rollback_restores_only_managed_keys_after_later_edits(self):
+        with IsolatedHome() as h:
+            h.claude_settings.parent.mkdir()
+            h.claude_settings.write_text(json.dumps({'env': {'TZ': 'Asia/Tokyo'}, 'model': 'original'}))
+            h.vscode_settings.parent.mkdir(parents=True)
+            h.vscode_settings.write_text('{\n  // mine\n  "editor.fontSize": 13\n}\n')
+            self.assertEqual(h.install().returncode, 0)
+
+            data = json.loads(h.claude_settings.read_text())
+            data['tui'] = {'theme': 'dark'}
+            data['env']['HTTPS_PROXY'] = 'http://127.0.0.1:1'  # hand edit to a managed key: still restored
+            h.claude_settings.write_text(json.dumps(data))
+            h.vscode_settings.write_text(h.vscode_settings.read_text() + '// later edit\n')
 
             result = h.rollback()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(h.claude_settings.read_text()), {
                 'env': {'TZ': 'Asia/Tokyo'}, 'model': 'original', 'tui': {'theme': 'dark'}})
+            text = h.vscode_settings.read_text()
+            self.assertIn('// mine', text)
+            self.assertIn('// later edit', text)
+            self.assertEqual(loads(text), {'editor.fontSize': 13})
 
-    def test_timezone_is_opt_in_sticky_and_clearable(self):
+    def test_whole_file_records_from_older_releases_are_migrated(self):
+        import base64
+        with IsolatedHome() as h:
+            h.claude_settings.parent.mkdir()
+            original = json.dumps({'env': {'TZ': 'Asia/Tokyo'}, 'model': 'original'}).encode()
+            h.claude_settings.write_bytes(original)
+            self.assertEqual(h.install().returncode, 0)
+            manifest_path = h.root / 'backups/manifest.json'
+            manifest = json.loads(manifest_path.read_text())
+            installed = h.claude_settings.read_bytes()
+            import hashlib
+            manifest['files'][str(h.claude_settings)] = {   # the old whole-file record format
+                'existed': True, 'mode': 0o644, 'original': base64.b64encode(original).decode(),
+                'installed_sha256': hashlib.sha256(installed).hexdigest()}
+            manifest_path.write_text(json.dumps(manifest))
+
+            data = json.loads(installed)
+            data['tui'] = 'fullscreen'
+            h.claude_settings.write_text(json.dumps(data))
+            result = h.install()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(manifest_path.read_text())['files'][str(h.claude_settings)]['kind'], 'keys')
+            result = h.rollback()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(h.claude_settings.read_text()),
+                             {'env': {'TZ': 'Asia/Tokyo'}, 'model': 'original', 'tui': 'fullscreen'})
+
+    def test_timezone_defaults_and_is_sticky(self):
         with IsolatedHome() as h:
             self.assertEqual(h.install().returncode, 0)
-            self.assertNotIn('TZ', json.loads(h.claude_settings.read_text())['env'])
+            self.assertEqual(json.loads(h.claude_settings.read_text())['env']['TZ'], 'Asia/Jakarta')
 
-            self.assertEqual(h.install('--timezone', 'Asia/Jakarta').returncode, 0)
+            self.assertEqual(h.install('--timezone', 'Asia/Tokyo').returncode, 0)
             self.assertEqual(h.install().returncode, 0)  # sticky: no flag keeps the old value
-            self.assertEqual(json.loads((h.root / 'config.json').read_text())['cli_timezone'], 'Asia/Jakarta')
+            self.assertEqual(json.loads((h.root / 'config.json').read_text())['cli_timezone'], 'Asia/Tokyo')
+            self.assertIn({'name': 'TZ', 'value': 'Asia/Tokyo'},
+                          loads(h.vscode_settings.read_text())['claudeCode.environmentVariables'])
 
-            result = h.install('--no-timezone')
+    def test_china_timezone_rejected_before_writing(self):
+        with IsolatedHome() as h:
+            result = h.install('--timezone', 'Asia/Shanghai')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('China timezones are not allowed', result.stderr)
+            self.assertFalse(h.root.exists())
+
+    def test_timezone_mismatch_stops_install_until_skipped(self):
+        with IsolatedHome() as h, closed_port() as port:
+            # Proxy unreachable, so the exit country can't be confirmed: the check must stop the install.
+            result = h.install('--port', str(port), check_timezone=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('--skip-timezone-check', result.stderr)
+            self.assertFalse(h.root.exists())
+            result = h.install('--port', str(port))  # helper passes --skip-timezone-check
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertNotIn('TZ', json.loads(h.claude_settings.read_text())['env'])
-            names = [v['name'] for v in loads(h.vscode_settings.read_text())['claudeCode.environmentVariables']]
-            self.assertNotIn('TZ', names)
+            self.assertIn('Timezone check: skipped', result.stdout)
 
     def test_invalid_timezone_rejected_before_writing(self):
         with IsolatedHome() as h:

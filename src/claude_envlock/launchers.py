@@ -31,8 +31,7 @@ def preflight(cfg):
 def cli_environment(cfg, base=None):
     env = proxy_environment(cfg, base)
     env.update(cfg.extra_env)
-    if cfg.cli_timezone:
-        env['TZ'] = cfg.cli_timezone
+    env['TZ'] = cfg.cli_timezone
     return env
 
 

@@ -63,9 +63,38 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 make_config(**overrides)
 
-    def test_rejects_unknown_timezone(self):
-        with self.assertRaises(ValueError):
-            make_config(cli_timezone='Bad/Timezone')
+    def test_rejects_unknown_empty_and_china_timezones(self):
+        for name in ('Bad/Timezone', '', 'Asia/Shanghai', 'PRC', 'Asia/Urumqi', 'Asia/Hong_Kong', 'Asia/Macau'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                make_config(cli_timezone=name)
+
+    def test_default_timezone(self):
+        self.assertEqual(make_config().cli_timezone, 'Asia/Jakarta')
+        self.assertEqual(make_config().managed_env()['TZ'], 'Asia/Jakarta')
+
+
+class TimezoneMismatchTests(unittest.TestCase):
+    def check(self, timezone, loc):
+        trace = {'ip': '203.0.113.10', 'loc': loc}
+        return proxy.timezone_mismatch(make_config(cli_timezone=timezone), trace)
+
+    def test_matching_country_passes(self):
+        self.assertIsNone(self.check('Asia/Jakarta', 'ID'))
+        self.assertIsNone(self.check('Asia/Makassar', 'ID'))  # any zone of a multi-zone country
+        self.assertIsNone(self.check('America/Chicago', 'US'))
+
+    def test_other_country_is_reported(self):
+        message = self.check('Asia/Jakarta', 'JP')
+        self.assertIn('Asia/Tokyo', message)
+        self.assertIn('203.0.x.x', message)
+        self.assertNotIn('203.0.113.10', message)
+
+    def test_unknown_country_is_reported(self):
+        self.assertIn('no known timezone', self.check('Asia/Jakarta', 'XX'))
+
+    def test_unreachable_trace_is_reported(self):
+        with mock.patch.object(proxy, 'exit_trace', side_effect=OSError):
+            self.assertIn('could not be checked', proxy.timezone_mismatch(make_config()))
 
     def test_json_round_trip(self):
         cfg = make_config(root='/tmp/x', cli_timezone='Asia/Jakarta', cli_candidates=('/a',))

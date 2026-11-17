@@ -6,7 +6,7 @@ import sys
 from . import integrity
 from .config import Config
 from .launchers import open_web, run_cli
-from .proxy import country_diagnostics, exit_trace, gate
+from .proxy import country_diagnostics, exit_trace, gate, timezone_mismatch
 
 CLI_KINDS = {'claude': 'default', 'claude-npm': 'npm', 'claude-native': 'native'}
 CHECK_USAGE = 'Usage: claude-check [--country]'
@@ -36,6 +36,8 @@ def check(cfg, args):
             status = 'FAIL ', 'NOT in CLAUDE_ENVLOCK_ALLOWED_EXIT_IPS'
             problems.append('exit IP not allowed')
         print('{} exit IP via claude.ai: {} ({}) - {}'.format(status[0], trace['ip'], trace['loc'], status[1]))
+        mismatch = timezone_mismatch(cfg, trace)
+        print('WARN  ' + mismatch if mismatch else 'OK    timezone {} matches the exit country'.format(cfg.cli_timezone))
     drift = integrity.verify(cfg)
     for item in drift:
         print('FAIL  ' + item)

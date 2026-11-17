@@ -42,7 +42,7 @@ Before launch, every wrapper also:
 - sets `HTTP(S)_PROXY` (both cases) to the local proxy, and removes `ALL_PROXY` and external `NO_PROXY` entries;
 - sets `BROWSER` to `claude-web`, so OAuth links open in the dedicated Chrome profile;
 - turns off non-essential Claude Code traffic, telemetry, and error reporting;
-- optionally pins `TZ` for Claude processes only (see [Timezone](#optional-pin-a-timezone-for-claude-processes));
+- pins `TZ` for Claude processes only, `Asia/Jakarta` by default (see [Timezone](#timezone-for-claude-processes));
 - checks for drift from `claude.env` and, if you set an allowlist, checks the exit IP (see below).
 
 More details: [docs/architecture.md](docs/architecture.md) · [docs/security-model.md](docs/security-model.md)
@@ -85,15 +85,14 @@ running don't pick up the new settings.
 | Option | Meaning |
 | --- | --- |
 | `--port N` | Local proxy port. First-install default: `7890` |
-| `--timezone Area/City` | Pin `TZ` for Claude CLI / IDE processes only. Off by default |
-| `--no-timezone` | Stop pinning `TZ` |
+| `--timezone Area/City` | `TZ` for Claude CLI / IDE processes only. Default: `Asia/Jakarta`. China timezones are rejected |
+| `--skip-timezone-check` | Install even if the timezone doesn't match the exit IP country seen by claude.ai |
 | `--exit-ips "IP CIDR …"` | Exit-IP allowlist (`""` turns it off) |
 | `--on-mismatch prompt\|block` | What happens on drift or a disallowed exit IP |
 | `--install-claude [CHANNEL]` | If Claude Code is missing, install it with the official installer, through the proxy. `stable` (default), `latest`, or a version |
 | `--claude PATH` | The original Claude CLI to wrap (repeatable). Default: auto-detects `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` |
 | `--chrome PATH` | Chrome executable. Default: `/Applications/Google Chrome.app/...` |
 | `--app-dir PATH` | Where to create `Claude Envlock.app`. Default: `/Applications` |
-| `--merge-unmanaged-settings` | Keep settings Claude wrote into `~/.claude/settings.json` itself (for example `tui`) |
 | `--dry-run` | Report only |
 
 Each flag edits `~/.claude-env/claude.env`. A flag you leave out keeps the value the file already has.
@@ -124,7 +123,7 @@ the dedicated profile keep separate sessions.
 ```sh
 # ~/.claude-env/claude.env
 export CLAUDE_ENVLOCK_PORT="7890"
-export CLAUDE_ENVLOCK_TIMEZONE=""                                  # empty = system timezone
+export CLAUDE_ENVLOCK_TIMEZONE="Asia/Jakarta"                      # empty = default (Asia/Jakarta)
 export CLAUDE_ENVLOCK_ALLOWED_EXIT_IPS="203.0.113.10 198.51.100.0/24"
 export CLAUDE_ENVLOCK_ON_MISMATCH="prompt"                         # or "block"
 
@@ -177,17 +176,36 @@ all work. `claude-check` shows your current exit IP, so you know what to allow.
 - Every decision is logged to `~/.claude-env/decisions.log` (`0600`).
 - `claude-check` never prompts. It prints every check and exits 1 on any problem, so you can use it in scripts.
 
-### Optional: pin a timezone for Claude processes
+### Timezone for Claude processes
 
 ```sh
-./install.sh --timezone Asia/Jakarta
+./install.sh                          # default: Asia/Jakarta
+./install.sh --timezone Asia/Tokyo    # any other IANA zone
 ```
 
 This sets `TZ` for the Claude CLI, its subprocesses, and the VS Code extension's process. It is
-written to `~/.claude/settings.json` and to VS Code's `claudeCode.environmentVariables`. One use case:
-seeing usage reset times in your home timezone while traveling. Your shell, macOS, and the
-dedicated Chrome keep the real system timezone. The value is remembered across re-installs; remove it
-with `--no-timezone`.
+written to `~/.claude/settings.json` and to VS Code's `claudeCode.environmentVariables`. Your shell,
+macOS, and the dedicated Chrome keep the real system timezone. The value is remembered across re-installs.
+
+- **China timezones are rejected** (`Asia/Shanghai`, `Asia/Urumqi`, `Asia/Hong_Kong`, `Asia/Macau`, and
+  their aliases such as `PRC`).
+- **The installer checks the timezone against the exit IP.** It asks `https://claude.ai/cdn-cgi/trace`
+  (through the proxy) for the exit country and requires the timezone to be one of that country's zones
+  (from the system's `zone.tab`). On a mismatch, or if the exit IP can't be read, the install stops and
+  writes nothing. Fix the timezone or the proxy node, or re-run with `--skip-timezone-check`.
+- `claude-check` shows the same comparison as a `WARN` line, which is useful after switching nodes.
+
+### Your own edits to `settings.json`
+
+`~/.claude/settings.json` and VS Code's `settings.json` are shared with you and with Claude, so
+claude-envlock owns **only its own keys** there (the proxy variables, `TZ`, the privacy variables,
+`BROWSER`, and the VS Code `claudeCode.claudeProcessWrapper`). Everything else is yours.
+
+- Edit anything else freely (`model`, `tui`, your own `env` keys…). Install and rollback never refuse
+  because of it.
+- If you hand-edit one of claude-envlock's keys, launches show the drift popup until you re-run
+  `./install.sh`. The installer then puts the `claude.env` value back, prints what it replaced, and saves a copy of
+  the file in `~/.claude-env/backups/`. To change one of those values for good, edit `claude.env`.
 
 ## Uninstall / roll back
 
@@ -196,9 +214,10 @@ with `--no-timezone`.
 ~/.claude-env/bin/claude-rollback           # restore original files
 ```
 
-Quit the dedicated Chrome first. Rollback is all-or-nothing. If any managed file changed after
-deployment, nothing is restored and the changed files are listed. It restores your original shell,
-Claude, and VS Code configs and removes the launchers and the app. The Chrome profile and the
+Quit the dedicated Chrome first. Rollback removes the launchers and the app, and restores your original
+shell configs. In Claude's and VS Code's `settings.json` it puts back only claude-envlock's keys and keeps
+everything you or Claude changed since. If a file claude-envlock owns (in `~/.claude-env` or the app)
+was modified, nothing is restored and the changed files are listed. The Chrome profile and the
 backups stay in `~/.claude-env`.
 
 ## Files it manages

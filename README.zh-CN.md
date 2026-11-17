@@ -69,15 +69,14 @@ cd claude-envlock
 | 参数 | 含义 |
 | --- | --- |
 | `--port N` | 本机代理端口；默认沿用上次，否则 `7890` |
-| `--timezone 区域/城市` | 仅为 Claude CLI / IDE 进程固定 `TZ`；默认不启用 |
-| `--no-timezone` | 取消固定 `TZ` |
+| `--timezone 区域/城市` | 仅为 Claude CLI / IDE 进程设置 `TZ`；默认 `Asia/Jakarta`；不允许中国时区 |
+| `--skip-timezone-check` | 时区与 claude.ai 看到的出口 IP 国家不一致时，仍然继续安装 |
 | `--exit-ips "IP 网段 …"` | 出口 IP 白名单（`""` 关闭） |
 | `--on-mismatch prompt\|block` | 发现配置变化或出口 IP 不符时：弹窗询问 / 直接阻止 |
 | `--install-claude [渠道]` | 未安装 Claude Code 时，经代理用官方安装脚本安装；`stable`（默认）、`latest` 或指定版本 |
 | `--claude 路径` | 要包装的原始 CLI（可重复）；默认自动检测 `/opt/homebrew/bin`、`/usr/local/bin`、`~/.local/bin` |
 | `--chrome 路径` | Chrome 可执行文件 |
 | `--app-dir 路径` | `Claude Envlock.app` 位置，默认 `/Applications` |
-| `--merge-unmanaged-settings` | 保留 Claude 自己写入 `~/.claude/settings.json` 的设置（如 `tui`） |
 | `--dry-run` | 仅预检 |
 
 重复安装是安全的：幂等、保留 VS Code JSONC 注释、不重复添加 shell 配置；`.zshrc` / `.zprofile` 中受管块**以外**的修改会被保留。若受管文件部署后被手动修改，安装器会**停止并指出该文件**，不会强行覆盖。
@@ -101,7 +100,7 @@ claude-web 'https://…'    # 独立 Chrome 打开任意 HTTPS 地址（如 OAut
 ```sh
 # ~/.claude-env/claude.env
 export CLAUDE_ENVLOCK_PORT="7890"
-export CLAUDE_ENVLOCK_TIMEZONE=""                                  # 空 = 系统时区
+export CLAUDE_ENVLOCK_TIMEZONE="Asia/Jakarta"                      # 空 = 默认（Asia/Jakarta）
 export CLAUDE_ENVLOCK_ALLOWED_EXIT_IPS="203.0.113.10 198.51.100.0/24"
 export CLAUDE_ENVLOCK_ON_MISMATCH="prompt"                         # 或 "block"
 
@@ -141,13 +140,25 @@ export HTTP_PROXY="http://127.0.0.1:7890"
 - 每次选择都记录在 `~/.claude-env/decisions.log`（`0600`）。
 - `claude-check` 从不弹窗：列出所有检查结果，有任何问题就退出码 1，适合脚本使用。
 
-### 可选：为 Claude 进程固定时区
+### Claude 进程的时区
 
 ```sh
-./install.sh --timezone Asia/Jakarta
+./install.sh                          # 默认：Asia/Jakarta
+./install.sh --timezone Asia/Tokyo    # 其他 IANA 时区
 ```
 
-只影响 Claude CLI、其子进程以及 VS Code 扩展进程，写入 `~/.claude/settings.json` 和 VS Code 的 `claudeCode.environmentVariables`。终端本身、macOS 和独立 Chrome 仍使用真实系统时区。该值在重复安装时保留，用 `--no-timezone` 取消。
+只影响 Claude CLI、其子进程以及 VS Code 扩展进程，写入 `~/.claude/settings.json` 和 VS Code 的 `claudeCode.environmentVariables`。终端本身、macOS 和独立 Chrome 仍使用真实系统时区。该值在重复安装时保留。
+
+- **不允许中国时区**（`Asia/Shanghai`、`Asia/Urumqi`、`Asia/Hong_Kong`、`Asia/Macau` 及 `PRC` 等别名）。
+- **安装时会检查时区与出口 IP 是否匹配。** 通过代理请求 `https://claude.ai/cdn-cgi/trace` 获取出口国家，时区必须属于该国家（依据系统 `zone.tab`）。不匹配或无法读取出口 IP 时，安装会停止且不写入任何文件。请修改时区或代理节点，或加 `--skip-timezone-check` 重新运行。
+- `claude-check` 会以 `WARN` 行显示同样的比较结果，切换节点后可用来检查。
+
+### 自己修改 `settings.json`
+
+`~/.claude/settings.json` 和 VS Code 的 `settings.json` 是你、Claude 和本工具共用的，所以 claude-envlock 在这两个文件里**只管理自己的 key**（代理变量、`TZ`、隐私变量、`BROWSER`，以及 VS Code 的 `claudeCode.claudeProcessWrapper`），其他内容都归你。
+
+- 其他内容可以随便改（`model`、`tui`、你自己的 `env` key 等），安装和回滚都不会因此拒绝。
+- 如果你手动改了 claude-envlock 管理的 key，在重新运行 `./install.sh` 之前，每次启动都会弹出漂移提示。重新安装时会把它改回 `claude.env` 里的值，打印替换了什么，并在 `~/.claude-env/backups/` 里保存一份文件副本。要永久修改这些值，请改 `claude.env`。
 
 ## 卸载 / 回滚
 
@@ -156,7 +167,7 @@ export HTTP_PROXY="http://127.0.0.1:7890"
 ~/.claude-env/bin/claude-rollback           # 恢复原始文件
 ```
 
-先退出独立 Chrome。回滚是“全有或全无”：只要有受管文件在部署后被改动，就不恢复任何文件并列出冲突。Chrome 资料与备份保留在 `~/.claude-env`。
+先退出独立 Chrome。回滚会删除启动器和 app，并恢复原来的 shell 配置。对 Claude 和 VS Code 的 `settings.json`，只恢复 claude-envlock 自己的 key，保留之后你或 Claude 做的其他改动。如果 claude-envlock 自己拥有的文件（`~/.claude-env` 或 app 里的）被改过，则不恢复任何文件并列出这些文件。Chrome 资料与备份保留在 `~/.claude-env`。
 
 > `~/.claude-env/backups/manifest.json` 含原始配置，`chrome-profile/` 含登录状态，**都不要分享**。
 

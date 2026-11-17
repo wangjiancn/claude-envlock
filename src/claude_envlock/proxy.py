@@ -2,8 +2,9 @@
 
 - gate(): sends only `CONNECT claude.ai:443` to the local proxy, then verifies the origin's TLS
   certificate. No HTTP request.
-- exit_trace(): only when an exit-IP allowlist is set. One cookie-free GET to
-  https://claude.ai/cdn-cgi/trace (Cloudflare's public diagnostics endpoint).
+- exit_trace(): when an exit-IP allowlist is set, and once at install time to compare the exit
+  country with the timezone. One cookie-free GET to https://claude.ai/cdn-cgi/trace (Cloudflare's
+  public diagnostics endpoint).
 Neither ever sends a cookie, token, or prompt.
 """
 import concurrent.futures
@@ -15,6 +16,7 @@ import urllib.parse
 import urllib.request
 
 from .common import USER_AGENT, GATE_HOST, GATE_PORT, NO_PROXY_VALUE, NO_PROXY_VARS, PRIVACY_VARS, PROXY_VARS
+from .config import country_timezones
 
 MAX_HEADER_BYTES = 16384
 
@@ -109,6 +111,25 @@ def exit_ip_problems(cfg):
     if cfg.exit_ip_allowed(trace['ip']):
         return []
     return ['Exit IP {} ({}) is not in CLAUDE_ENVLOCK_ALLOWED_EXIT_IPS'.format(mask_ip(trace['ip']), trace['loc'])]
+
+
+def timezone_mismatch(cfg, trace=None):
+    """None if cfg.cli_timezone belongs to the exit IP's country (as seen by claude.ai); otherwise a message."""
+    if trace is None:
+        try:
+            trace = exit_trace(cfg)
+        except Exception as exc:
+            return 'Could not read the exit IP via claude.ai ({}), so the timezone could not be checked'.format(
+                type(exc).__name__)
+    try:
+        zones = country_timezones(trace['loc'])
+    except OSError:
+        return 'Could not read the system timezone table, so the timezone could not be checked'
+    if cfg.cli_timezone in zones:
+        return None
+    expected = ', '.join(zones) if zones else 'no known timezone'
+    return 'Timezone {} does not match the exit IP {} in country {} (expected: {})'.format(
+        cfg.cli_timezone, mask_ip(trace['ip']), trace['loc'], expected)
 
 
 def country_diagnostics(cfg):

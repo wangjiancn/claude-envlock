@@ -18,7 +18,7 @@ For the **managed entry points** (`~/.claude-env/bin/*`, the VS Code extension t
 | The exit IP is on your allowlist, or the user explicitly approves | One cookie-free GET to `claude.ai/cdn-cgi/trace` through the proxy, so it follows the same proxy rule as Claude |
 | A popup can't be turned into code execution | The message is passed to `osascript` as `argv`, never spliced into the script. Default button and timeout = Block |
 | `--install-claude` only installs the official build, only through the proxy | Gate first; downloads `claude.ai/install.sh` through the proxy; redirects pinned to `claude.ai` / `downloads.claude.ai` over HTTPS; content must be a bash script ≤ 1 MB; the channel is validated before any network use. Anthropic's installer verifies the binary SHA-256 |
-| The install can be undone exactly | Byte-level backups; all-or-nothing rollback with conflict detection |
+| The install can be undone exactly | Byte-level backups of owned files; per-key restore of shared settings files, so later edits are kept |
 
 ## What it does **not** guarantee
 

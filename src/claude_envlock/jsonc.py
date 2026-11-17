@@ -112,3 +112,57 @@ def update(text, changes):
     for a, b, value in sorted(edits, reverse=True):
         text = text[:a] + value + text[b:]
     return text
+
+
+
+def _whole_lines(text, a, b):
+    """Widen [a, b) to full lines when nothing else shares those lines."""
+    line_start = text.rfind('\n', 0, a) + 1
+    line_end = text.find('\n', b)
+    line_end = len(text) if line_end < 0 else line_end
+    if not text[line_start:a].strip() and not text[b:line_end].strip():
+        return line_start, min(line_end + 1, len(text))
+    return a, b
+
+
+def remove(text, keys):
+    """Delete top-level keys, preserving comments and unrelated text."""
+    keys = set(keys)
+    start = skip(text, 0)
+    if text[start:start + 1] != '{':
+        raise ValueError('Expected settings object')
+    i = start + 1
+    members = []  # (key, key_start, value_end, comma_index or None)
+    while True:
+        i = skip(text, i)
+        if text[i:i + 1] == '}':
+            break
+        key_start, end = i, string_end(text, i)
+        key = json.loads(text[i:end])
+        i = skip(text, end)
+        if text[i] != ':':
+            raise ValueError('Expected colon')
+        end = value_end(text, skip(text, i + 1))
+        i = skip(text, end)
+        comma = None
+        if text[i] == ',':
+            comma, i = i, i + 1
+        elif text[i] != '}':
+            raise ValueError('Expected comma')
+        members.append((key, key_start, end, comma))
+    edits = []
+    kept = [m for m in members if m[0] not in keys]
+    for key, key_start, end, comma in members:
+        if key not in keys:
+            continue
+        if comma is not None:
+            edits.append(_whole_lines(text, key_start, comma + 1))
+        else:
+            edits.append(_whole_lines(text, key_start, end))
+    # If the last member went away, the last kept member's comma now dangles; drop it.
+    if members and members[-1][0] in keys and kept and kept[-1][3] is not None:
+        comma = kept[-1][3]
+        edits.append((comma, comma + 1))
+    for a, b in sorted(edits, reverse=True):
+        text = text[:a] + text[b:]
+    return text

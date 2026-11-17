@@ -22,7 +22,8 @@ src/claude_envlock/
   prompt.py                  Block/Continue popup → /dev/tty fallback → block; decisions.log
   envfile.py                 claude.env parse/render (strict shell subset)          [repo only]
   cli.py                     main(root, argv): dispatches on argv[0]
-  rollback.py                conflict check + restore
+  rollback.py                conflict check (owned files) + restore
+  shared.py                  per-key ownership of Claude / VS Code settings.json
   installer.py               Plan (transaction) + staging steps      [repo only]
   bootstrap.py               --install-claude: official installer via the proxy      [repo only]
   jsonc.py                   comment-preserving JSONC read/edit (also used by integrity)
@@ -99,8 +100,8 @@ claude.env ──(./install.sh)──► config.json, Claude settings env, VS Co
   so editing it is the normal way to request a change, not a conflict.
 - Generated lines (`HTTP_PROXY`, `TZ`, …) are rewritten each time. A generated line that matches
   neither the previous nor the new value was hand-edited, so the installer refuses to apply.
-- Keys that leave the managed env (for example an extra variable you deleted) are removed from
-  Claude and VS Code settings, but only if they still hold the value we wrote.
+- Keys that leave the managed env (for example an extra variable you deleted) get their original value
+  back in Claude and VS Code settings, but only if they still hold the value we wrote.
 
 ## Installer transaction
 
@@ -110,9 +111,14 @@ claude.env ──(./install.sh)──► config.json, Claude settings env, VS Co
 2. `stage(path, content, mode)` for every desired file. For each file:
    - refuse symlinks;
    - if it's already managed and its current hash ≠ the recorded `installed_sha256` → **conflict, stop**
-     (unless `--merge-unmanaged-settings` applies, for `~/.claude/settings.json` only);
+     (shell rc files adopt edits outside the managed block instead);
    - skip it if it's already identical;
    - the first time it's touched, record `existed`, `mode`, and the original bytes (base64).
+   Shared settings files (`~/.claude/settings.json`, VS Code `settings.json`) go through
+   `stage_shared()` instead (see `shared.py`): there is no whole-file check. Only claude-envlock's keys
+   are written; the manifest records each key's original value. A hand edit to one of our keys is
+   replaced, printed, and the file is copied to `backups/` first. Whole-file records from older
+   releases are converted on the next install.
 3. `--dry-run` stops here.
 4. `apply()`: write the manifest first, then write each file atomically (temp file + `fsync` + `rename`).
    If anything fails, restore the snapshots and the previous manifest.

@@ -17,6 +17,12 @@ PRIVACY_VARS = {
 GATE_HOST = 'claude.ai'
 GATE_PORT = 443
 DEFAULT_PORT = 7890
+# TZ for Claude CLI / IDE processes. Override with --timezone or CLAUDE_ENVLOCK_TIMEZONE.
+DEFAULT_TIMEZONE = 'Asia/Jakarta'
+# Mainland China, Hong Kong and Macau zones, including their legacy aliases. Never allowed as the Claude TZ.
+CHINA_TIMEZONES = frozenset(('Asia/Shanghai', 'Asia/Urumqi', 'Asia/Chongqing', 'Asia/Chungking', 'Asia/Harbin',
+                             'Asia/Kashgar', 'PRC', 'Asia/Hong_Kong', 'Hongkong', 'Asia/Macau', 'Asia/Macao'))
+ZONE_TAB = '/usr/share/zoneinfo/zone.tab'
 DEFAULT_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 ACTIVE_FLAG = 'CLAUDE_ENVLOCK_ACTIVE'
 # claude.ai rejects the default Python-urllib agent (403); identify the tool honestly instead.

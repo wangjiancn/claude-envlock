@@ -108,10 +108,12 @@ class IsolatedHome:
     def __exit__(self, *exc):
         self._tmp.cleanup()
 
-    def install(self, *extra, claude=True):
+    def install(self, *extra, claude=True, check_timezone=False):
         args = [sys.executable, '-I', str(REPO / 'install.py'), '--app-dir', str(self.app)]
         if claude:
             args += ['--claude', str(self.claude)]
+        if not check_timezone:  # the real check needs the network; it is unit-tested separately
+            args.append('--skip-timezone-check')
         return subprocess.run(args + list(extra), env=self.env, text=True, capture_output=True)
 
     def rollback(self, *extra):

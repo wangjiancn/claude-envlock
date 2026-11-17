@@ -252,7 +252,8 @@ class SymlinkedHomeTests(unittest.TestCase):
                 import sys
                 from .support import REPO
                 result = subprocess.run([sys.executable, '-I', str(REPO / 'install.py'), '--app-dir', str(h.app),
-                                         '--claude', str(h.claude)], env=env, text=True, capture_output=True)
+                                         '--claude', str(h.claude), '--skip-timezone-check'],
+                                        env=env, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 runtime_root = (link / '.claude-env').resolve()  # what the shim computes
                 self.assertEqual(integrity.verify(Config.load(runtime_root), home=link), [])

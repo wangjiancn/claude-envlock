@@ -103,7 +103,8 @@ class InstallerFlagTests(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(installer, 'default_cli_paths', return_value=(homebrew, str(h.home / '.local/bin/claude'))), \
                 contextlib.redirect_stdout(out):
-            code = installer.run(installer.parse_args(['--app-dir', str(h.app)] + list(argv)), home=h.home, root=h.root)
+            code = installer.run(installer.parse_args(['--app-dir', str(h.app), '--skip-timezone-check'] + list(argv)),
+                                 home=h.home, root=h.root)
         return code, out.getvalue()
 
     def test_missing_claude_suggests_install_flag(self):

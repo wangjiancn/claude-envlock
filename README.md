@@ -41,7 +41,9 @@ Before launch, every wrapper also:
 
 - sets `HTTP(S)_PROXY` (both cases) to the local proxy, and removes `ALL_PROXY` and external `NO_PROXY` entries;
 - sets `BROWSER` to `claude-web`, so OAuth links open in the dedicated Chrome profile;
-- turns off non-essential Claude Code traffic, telemetry, and error reporting;
+- turns off Claude Code telemetry and error reporting (`DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`).
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is **not** set, because it breaks `/usage`. To turn it on anyway,
+  add `export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"` to the extra variables in `claude.env`;
 - pins `TZ` for Claude processes only, `Asia/Jakarta` by default (see [Timezone](#timezone-for-claude-processes));
 - checks for drift from `claude.env` and, if you set an allowlist, checks the exit IP (see below).
 

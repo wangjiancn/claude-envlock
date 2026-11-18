@@ -16,8 +16,8 @@ import time
 from . import __version__
 from . import envfile, shared
 from .bootstrap import install_claude
-from .common import (APP_NAME, DEFAULT_CHROME, DEFAULT_PORT, DEFAULT_TIMEZONE, LAUNCHERS, SHELL_BEGIN, SHELL_END,
-                     SHELL_FILES, atomic_write, default_root, manifest_path, render_shell_block, sha256, short_path)
+from .common import (APP_NAME, DEFAULT_CHROME, DEFAULT_PORT, DEFAULT_TIMEZONE, LAUNCHERS, RETIRED_ENV, SHELL_BEGIN,
+                     SHELL_END, SHELL_FILES, atomic_write, default_root, manifest_path, render_shell_block, sha256, short_path)
 from .config import Config
 from .proxy import timezone_mismatch
 
@@ -312,7 +312,8 @@ def load_previous_config(root):
 
 def resolve_settings(args, env_path, previous):
     """claude.env is the source; flags edit it; older installs migrate from config.json."""
-    values = envfile.parse(env_path.read_text()) if env_path.exists() else None
+    text = env_path.read_text() if env_path.exists() else None
+    values = envfile.drop_retired(text, envfile.parse(text)) if text is not None else None
     if values is not None:
         settings = envfile.settings_from_values(values)
     elif previous:
@@ -379,6 +380,8 @@ def run(args, home=None, root=None):
 
     env = cfg.managed_env()
     previous_env = previous.managed_env() if previous else {}
+    if previous:  # earlier releases also wrote these; remove them where they still hold our value
+        previous_env = dict(RETIRED_ENV, **previous_env)
     if values is not None:
         edited = envfile.hand_edited_generated_keys(values, previous_env, env)
         if edited:

@@ -10,9 +10,14 @@ PROXY_VARS = ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy')
 NO_PROXY_VARS = ('NO_PROXY', 'no_proxy')
 SOCKS_VARS = ('ALL_PROXY', 'all_proxy')
 PRIVACY_VARS = {
-    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
     'DISABLE_TELEMETRY': '1',
     'DISABLE_ERROR_REPORTING': '1',
+}
+# Variables earlier releases wrote but this one no longer manages. Upgrades remove them wherever they
+# still hold the value we wrote. CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC breaks Claude's /usage command;
+# to keep it anyway, add it as an extra variable in claude.env.
+RETIRED_ENV = {
+    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
 }
 GATE_HOST = 'claude.ai'
 GATE_PORT = 443

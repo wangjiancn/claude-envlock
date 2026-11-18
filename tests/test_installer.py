@@ -2,9 +2,12 @@ import json
 import unittest
 
 from claude_envlock.installer import shell_block
-from claude_envlock.jsonc import loads
+from claude_envlock.jsonc import loads, update
+from claude_envlock.proxy import proxy_environment
 
-from .support import IsolatedHome, closed_port
+from .support import IsolatedHome, closed_port, make_config
+
+NONESSENTIAL = 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
 
 
 class InstallerTests(unittest.TestCase):
@@ -99,6 +102,55 @@ class InstallerTests(unittest.TestCase):
             self.assertIn('// mine', text)
             self.assertIn('// later edit', text)
             self.assertEqual(loads(text), {'editor.fontSize': 13})
+
+    def test_nonessential_traffic_variable_is_no_longer_set(self):
+        cfg_env = make_config().managed_env()
+        self.assertNotIn(NONESSENTIAL, cfg_env)
+        self.assertEqual((cfg_env['DISABLE_TELEMETRY'], cfg_env['DISABLE_ERROR_REPORTING']), ('1', '1'))
+        self.assertNotIn(NONESSENTIAL, proxy_environment(make_config(), {}))
+
+    def test_upgrade_removes_values_older_releases_wrote(self):
+        with IsolatedHome() as h:
+            self.assertEqual(h.install().returncode, 0)
+            # What an older release left behind: the variable in all three places.
+            data = json.loads(h.claude_settings.read_text())
+            data['env'][NONESSENTIAL] = '1'
+            h.claude_settings.write_text(json.dumps(data, indent=2) + '\n')
+            vscode = loads(h.vscode_settings.read_text())
+            variables = vscode['claudeCode.environmentVariables'] + [{'name': NONESSENTIAL, 'value': '1'}]
+            h.vscode_settings.write_text(update(h.vscode_settings.read_text(),
+                                                {'claudeCode.environmentVariables': variables}))
+            env_file = h.root / 'claude.env'
+            env_file.write_text(env_file.read_text().replace(
+                'unset ALL_PROXY', 'export {}="1"\nunset ALL_PROXY'.format(NONESSENTIAL)))
+
+            result = h.install()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('Replacing', result.stdout)
+            self.assertNotIn(NONESSENTIAL, json.loads(h.claude_settings.read_text())['env'])
+            names = [v['name'] for v in loads(h.vscode_settings.read_text())['claudeCode.environmentVariables']]
+            self.assertNotIn(NONESSENTIAL, names)
+            self.assertNotIn(NONESSENTIAL, env_file.read_text())
+
+    def test_user_can_still_opt_in_or_keep_own_value(self):
+        with IsolatedHome() as h:
+            h.claude_settings.parent.mkdir()
+            h.claude_settings.write_text(json.dumps({'env': {NONESSENTIAL: 'true'}}))  # the user's own value
+            self.assertEqual(h.install().returncode, 0)
+            self.assertEqual(h.install().returncode, 0)
+            self.assertEqual(json.loads(h.claude_settings.read_text())['env'][NONESSENTIAL], 'true')
+
+        with IsolatedHome() as h:
+            self.assertEqual(h.install().returncode, 0)
+            env_file = h.root / 'claude.env'  # opt back in as an extra variable
+            env_file.write_text(env_file.read_text().replace(
+                '# ---- Extra variables passed to Claude (add your own export lines here) ----\n',
+                '# ---- Extra variables passed to Claude (add your own export lines here) ----\n'
+                'export {}="1"\n'.format(NONESSENTIAL)))
+            result = h.install()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(h.claude_settings.read_text())['env'][NONESSENTIAL], '1')
+            self.assertIn('export {}="1"'.format(NONESSENTIAL), env_file.read_text())
 
     def test_whole_file_records_from_older_releases_are_migrated(self):
         import base64

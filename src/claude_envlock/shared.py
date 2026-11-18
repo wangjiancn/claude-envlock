@@ -152,11 +152,11 @@ def plan_update(path, fmt, record, desired, previous):
                                   and sha256(old) == record['installed_sha256'])
 
     originals = record['original_values']
-    current = read(fmt, text, set(desired) | set(originals))
+    current = read(fmt, text, set(desired) | set(originals) | set(previous))
     updates = {}
-    for key in [k for k in originals if k not in desired]:
-        value = originals.pop(key)
-        if current[key] == previous.get(key):  # still our value: put the original back
+    for key in sorted((set(originals) | set(previous)) - set(desired)):
+        value = originals.pop(key, None)
+        if current[key] is not None and current[key] == previous.get(key):  # still our value: put the original back
             updates[key] = value
     for key in desired:
         if key not in originals:

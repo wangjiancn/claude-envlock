@@ -34,7 +34,7 @@ claude ──► 门禁：经 127.0.0.1:<端口> CONNECT claude.ai:443 ──►
 
 - 设置大小写两套 `HTTP(S)_PROXY`，移除 `ALL_PROXY` 和外部 `NO_PROXY`；
 - 设置 `BROWSER=claude-web`，让 OAuth 链接在独立 Chrome 中打开；
-- 关闭 Claude Code 非必要流量、遥测和错误上报；
+- 关闭 Claude Code 遥测和错误上报（`DISABLE_TELEMETRY`、`DISABLE_ERROR_REPORTING`）。**不再**设置 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`，因为它会让 `/usage` 无法使用。如果仍想开启，在 `claude.env` 的额外变量部分加上 `export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"`；
 - 可选：仅为 Claude 进程固定 `TZ`（见下文）。
 
 详见 [docs/architecture.md](docs/architecture.md)、[docs/security-model.md](docs/security-model.md)。

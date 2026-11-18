@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Removed
+- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is no longer set, because it breaks Claude's `/usage` command.
+  Telemetry and error reporting stay off. On upgrade, the value older releases wrote is removed from
+  `~/.claude/settings.json`, VS Code settings, and `claude.env`. To keep it, add it as an extra variable in
+  `claude.env`.
+
 ### Added
 - `--install-claude [stable|latest|VERSION]`: on a machine without Claude Code, install it with
   Anthropic's official native installer, downloaded and run **through the verified proxy**.

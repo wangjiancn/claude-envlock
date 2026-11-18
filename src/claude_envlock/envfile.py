@@ -10,7 +10,7 @@ whole file (including the derived proxy lines) together with every other managed
 """
 import re
 
-from .common import DEFAULT_PORT, DEFAULT_TIMEZONE, SOCKS_VARS
+from .common import DEFAULT_PORT, DEFAULT_TIMEZONE, RETIRED_ENV, SOCKS_VARS
 from .config import RESERVED_ENV
 
 FILENAME = 'claude.env'
@@ -29,6 +29,20 @@ HEADER = """\
 #
 # Scripts can load the same environment:   source ~/.claude-env/claude.env
 """
+
+
+GENERATED_MARKER = '# ---- Generated from the settings above.'
+
+
+def drop_retired(text, values):
+    """Remove variables an older release generated (below the marker) that this release no longer manages.
+
+    The same variable written by the user in the extra-variables section is kept.
+    """
+    index = text.find(GENERATED_MARKER)
+    generated = parse(text[index:]) if index >= 0 else {}
+    return {k: v for k, v in values.items()
+            if not (k in RETIRED_ENV and k in generated and generated[k] == RETIRED_ENV[k])}
 
 
 def parse(text):
@@ -104,7 +118,7 @@ def render(cfg):
         '# ---- Extra variables passed to Claude (add your own export lines here) ----',
     ]
     parts += [line(k, v) for k, v in sorted(cfg.extra_env.items())]
-    parts += ['', '# ---- Generated from the settings above. Do not edit; rewritten on apply. ----']
+    parts += ['', GENERATED_MARKER + ' Do not edit; rewritten on apply. ----']
     parts += [line(k, v) for k, v in generated.items()]
     parts += ['unset ' + ' '.join(SOCKS_VARS), '']
     return '\n'.join(str(p) for p in parts)
